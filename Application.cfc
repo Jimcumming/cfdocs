@@ -8,6 +8,7 @@
 	<cffunction name="onRequest">
 		<cfargument name="targetPage" type="string">
 		<cfset var content = "">
+		<cfset var showError = "">
 		<cfif NOT StructKeyExists(application, "index") OR StructKeyExists(url, "reinit")>
 			<cfset application.index = DeserializeJSON( FileRead(ExpandPath("./data/en/index.json")))>
 			<cfset application.categories = {}>
@@ -17,7 +18,24 @@
 				<cfset application.categories[local.cat].name = local.catData.name>
 				<cfset application.categories[local.cat].items = local.catData.related>
 			</cfloop>
-			<cfset application.txtmark = createObject("java", "com.github.rjeschke.txtmark.Processor")>
+			<cfset application.guides = {}>
+			<cfloop array="#application.index.guides#" index="local.guide">
+				<cfset local.fileObj = fileOpen(ExpandPath("./guides/en/#local.guide#.md"),"read")>
+				<cfset local.title = fileReadLine(local.fileObj)>
+				<cfset fileClose(local.fileObj)>
+				<cfif Left(local.title, 1) IS "##"> 
+					<cfset local.title = Replace(local.title, "## ", "")>
+				<cfelse>
+					<cfset local.title = local.guide>
+				</cfif>
+				<cfset application.guides[local.guide] = local.title>
+			</cfloop>
+			<cftry>
+				<cfset application.txtmark = createObject("java", "com.github.rjeschke.txtmark.Processor")>
+				<cfcatch type="any">
+					<cfthrow message="Error loading txtmark - you might need to restart CF: #cfcatch.message#" detail="#cfcatch.detail#">
+				</cfcatch>
+			</cftry>			
 		</cfif>
 		<cfset request.content = "">
 		<!--- cache for one day --->
@@ -31,12 +49,13 @@
 		<cfsavecontent variable="request.content"><cfinclude template="#arguments.targetPage#"></cfsavecontent>
 		<cfparam name="request.cacheControlMaxAge" default="86400" type="integer">
 		<cfheader name="Cache-Control" value="max-age=#Int(request.cacheControlMaxAge)#">
+		<cfif len(showError)><cfoutput>#showError#</cfoutput><cfflush></cfif>
 		<cfcontent reset="true" type="text/html"><cfinclude template="views/layout.cfm">
 	</cffunction>
 
 	<cffunction name="linkTo" output="false">
 		<cfargument name="name">
-		<cfreturn "/" & URLEncodedFormat(arguments.name)>
+		<cfreturn "/" & URLEncodedFormat(LCase(arguments.name))>
 	</cffunction>
 
 	<cffunction name="autoLink" output="false">
@@ -75,11 +94,11 @@
 		<cfargument name="name"  default="#url.name#">
 		<cfset var cat = "">
 		<cfloop list="#StructKeyList(application.categories)#" index="cat">
-			<cfif ArrayContains(application.categories[cat].items, arguments.name)>
+			<cfif cat IS NOT "all" AND arrayFindNoCase(application.categories[cat].items, arguments.name)>
 				<cfreturn cat>
 			</cfif>
 		</cfloop>
-		<cfreturn "">
+		<cfreturn "all">
 	</cffunction>
 
 	<cffunction name="onError">
